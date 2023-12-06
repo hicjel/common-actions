@@ -1,0 +1,92 @@
+name: deployment workflow to RTF
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        description: github actions environment to use valiarbles, secrets and rules 
+        type: string
+      in_rtf_cpu:
+        required: false
+        description: set value for RTF deployment properties Reserved and Limit CPU
+        type: string
+      in_rtf_memory:
+        required: false
+        description: set value for RTF deployment property Memory
+        type: string
+      in_rtf_replicas:
+        required: false
+        description: set value for RTF deployment property Replica Count
+        type: string
+
+jobs:
+  deploy-to-rtf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    environment: ${{ inputs.environment }}
+
+    steps:
+    #checkout the source code from the git repo
+    - uses: actions/checkout@v3
+
+    #caches maven dependencies
+    - uses: actions/cache@v3
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
+    #setup java 1.8
+    - name: Set up JDK 1.8
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '8'
+
+    #create settings.xml file with the connected app credentials
+    - name: Create settings.xml
+      uses: whelk-io/maven-settings-xml-action@v21
+      with:
+        servers: >
+          [
+            {
+              "id": "AP-Repository",
+              "username": "~~~Client~~~",
+              "password": "${{ secrets.CA_CLIENTID }}~?~${{ secrets.CA_CLIENTSECRET }}"
+
+            },
+            {
+              "id": "anypoint-exchange-v3",
+              "username": "~~~Client~~~",
+              "password": "${{ secrets.CA_CLIENTID }}~?~${{ secrets.CA_CLIENTSECRET }}"
+
+            }
+          ]
+
+    - name: Deploy to RTF
+      env:
+        ACROSS_NODES: true
+        L_RTF_CPU: ${{ inputs.in_rtf_cpu || vars.RTF_CPU }} 
+        L_RTF_MEMORY: ${{ inputs.in_rtf_memory || vars.RTF_MEMORY }}
+        L_RTF_REPLICAS: ${{ inputs.in_rtf_replicas || vars.DEPLOYMENT_REPLICAS }}
+        RTF_DEPLOY_TIMEOUT: "1800000"
+      run: |
+        mvn deploy -DskipTests -DmuleDeploy \
+          -DconnectedApp.clientId=${{ secrets.CA_CLIENTID }} \
+          -DconnectedApp.clientSecret=${{ secrets.CA_CLIENTSECRET }} \
+          -Dmule.env=${{ vars.ENV }} \
+          -Drtf.target="${{ vars.AP_RTF_TARGET }}" \
+          -Denvironment=${{ vars.AP_RTF_ENVIRONMENT }} \
+          -Ddeploy.timeout=${{ env.RTF_DEPLOY_TIMEOUT }} \
+          -Drtf.replicas=${{ env.L_RTF_REPLICAS }} \
+          -Dmule.encryption.key=${{ secrets.ENCRYPTION_KEY }} \
+          -Danypoint.client_id=${{ secrets.AP_CLIENTID }} \
+          -Danypoint.client_secret=${{ secrets.AP_CLIENTSECRET  }} \
+          -Drtf.acrossNodes=${{ env.ACROSS_NODES }} \
+          -Drtf.cpuReserved=${{ env.L_RTF_CPU }} \
+          -Drtf.cpuMax=${{ env.L_RTF_CPU }} \
+          -Drtf.memoryReserved=${{ env.L_RTF_MEMORY }} \
+          -DpublicUrl=""
