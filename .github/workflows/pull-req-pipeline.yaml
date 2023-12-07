@@ -7,7 +7,7 @@ jobs:
   prepare-merge2development:
     runs-on: ubuntu-latest
 
-    environment: 'dev'
+    environment: 'DEV'
 
     steps:
     #checkout the source code from the git repo
